@@ -1,0 +1,9 @@
+version: 2
+run:
+  tests: false
+  timeout: 5m
+
+linters:
+  default: all
+  disable:
+    - depguard

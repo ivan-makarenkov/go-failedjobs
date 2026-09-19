@@ -1,0 +1,41 @@
+# go-failedjobs
+
+> Persist permanently failed RabbitMQ jobs in MySQL/Postgres and republish selected rows via HTTP (`POST /retry-task`) or `QueueFailedJobSrv.Retry`. Module: `github.com/ivan-makarenkov/go-failedjobs`. Package: `gofailedjobs`. Requires Go version from `go.mod` (currently 1.25+).
+
+Designed to pair with [go-amqp-adapter](https://github.com/ivan-makarenkov/go-amqp-adapter) as a Laravel-style retry → `failed_jobs` → `queue:retry` replacement: wire `srv.GetFailedJobHandler()` into the adapter’s `WithFailHandler`. A row is deleted only after a successful republish.
+
+Key rules for agents:
+
+- Storage backends: GORM or sqlx (`Config.Driver`; empty = gorm). DBMS: `mysql` or `postgres` (`Config.Dialect`; aliases `mariadb`, `postgresql`, `pg`).
+- Create table yourself from `schema.sql` — the package does **not** run migrations.
+- Preferred constructors: `NewQueueFailedJobSrvFromConfig` (owns DB; call `Close`) or `NewQueueFailedJobSrv` + existing repo (`NewGormQueueFailedJobRepo` / `NewSqlxQueueFailedJobRepo`).
+- HTTP: `Register(e, authMiddleware, srv, queue)` — auth middleware is **required** (`nil` panics). Use `PassThroughMiddleware` only if Echo already enforces ACL globally. Route: `POST /retry-task?task=1,2,3` (≤100 unique positive IDs).
+- On `Retry`, correlation id `gofailedjobs:failed-job:<id>` is set via `SetCorrelationID`. Propagate to AMQP with `go-amqp-adapter/otel` using `GetCorrelationID` / `SetCorrelationID`.
+- If row `connection` ≠ `SetConnection`, provide `SetPublisherResolver` or get `ErrConnectionMismatch`.
+- Logger needs `ErrorContext`; `*slog.Logger` works; `nil` → no-op.
+
+## Docs
+
+- [README](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/README.md): Integration with go-amqp-adapter, config, security, HTTP route semantics
+- [Table schema](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/schema.sql): `queue_failed_jobs` DDL (Postgres + commented MySQL)
+- [pkg.go.dev](https://pkg.go.dev/github.com/ivan-makarenkov/go-failedjobs): Generated Go API docs
+
+## API source
+
+- [Types & Publisher](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/queue_failed_jobs.go): `QueueFailedJob`, `Publisher`, repo/service interfaces, `RoutePath`
+- [Config / Drivers](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/db.go): `Config`, `Driver`, `Dialect`, `ConnectGorm`, `ConnectSqlx`
+- [Service](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/queue_failed_jobs_srv.go): `NewQueueFailedJobSrv*`, setters, `GetFailedJobHandler`, `Retry`
+- [Repository](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/queue_failed_jobs_repo.go): `NewQueueFailedJobRepo`, GORM/sqlx wrappers
+- [HTTP handler](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/httphandler.go): `Register`, `NewHandler`, `PassThroughMiddleware`
+- [Correlation ID](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/correlation.go): `SetCorrelationID` / `GetCorrelationID`
+- [Errors](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/errors.go): Client vs server error types used by the HTTP layer
+
+## Related
+
+- [go-amqp-adapter](https://github.com/ivan-makarenkov/go-amqp-adapter): In-broker publish/consume/retry; provide `WithFailHandler`
+- [go-amqp-adapter llms.txt](https://raw.githubusercontent.com/ivan-makarenkov/go-amqp-adapter/main/llms.txt): Agent guide for the companion library
+
+## Optional
+
+- [Echo v4](https://echo.labstack.com/): HTTP framework used by `Register` / `NewHandler`
+- [LICENSE](https://raw.githubusercontent.com/ivan-makarenkov/go-failedjobs/main/LICENSE)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	mq "github.com/ivan-makarenkov/amqp-adapter"
+	mq "github.com/ivan-makarenkov/go-amqp-adapter"
 )
 
 const (

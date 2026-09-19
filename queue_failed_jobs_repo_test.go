@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	mq "github.com/ivan-makarenkov/amqp-adapter"
+	mq "github.com/ivan-makarenkov/go-amqp-adapter"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

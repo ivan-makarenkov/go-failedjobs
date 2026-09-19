@@ -5,7 +5,7 @@ import "context"
 type correlationIDKey struct{}
 
 // SetCorrelationID stores a correlation id in context.
-// Use with amqp-adapter/otel.PropagationConfig.GetCorrelationID /
+// Use with go-amqp-adapter/otel.PropagationConfig.GetCorrelationID /
 // SetCorrelationID and WithPublishHeadersBuilder so the id is written to AMQP headers.
 func SetCorrelationID(ctx context.Context, value string) context.Context {
 	return context.WithValue(ctx, correlationIDKey{}, value)

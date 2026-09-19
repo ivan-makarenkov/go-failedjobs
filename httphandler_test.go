@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	mq "github.com/ivan-makarenkov/amqp-adapter"
+	mq "github.com/ivan-makarenkov/go-amqp-adapter"
 	"github.com/labstack/echo/v4"
 )
 

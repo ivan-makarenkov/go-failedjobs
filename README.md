@@ -8,11 +8,11 @@ go get github.com/ivan-makarenkov/go-failedjobs
 
 Package: `gofailedjobs`.
 
-## Together with amqp-adapter
+## Together with go-amqp-adapter
 
-This library and [amqp-adapter](https://github.com/ivan-makarenkov/amqp-adapter) were designed to be used together as a replacement for Laravel's retry-through-queue mechanism (`tries` / delayed retries → `failed_jobs` → `php artisan queue:retry`).
+This library and [go-amqp-adapter](https://github.com/ivan-makarenkov/go-amqp-adapter) were designed to be used together as a replacement for Laravel's retry-through-queue mechanism (`tries` / delayed retries → `failed_jobs` → `php artisan queue:retry`).
 
-- **amqp-adapter** handles in-broker retries (delay queue / DLX) — the analogue of Laravel's automatic job retries.
+- **go-amqp-adapter** handles in-broker retries (delay queue / DLX) — the analogue of Laravel's automatic job retries.
 - When retries are exhausted (or the handler returns a non-retryable error), `WithFailHandler` writes the payload here via `GetFailedJobHandler` — the analogue of Laravel's `failed_jobs` table.
 - **go-failedjobs** later republishes selected rows to RabbitMQ (`POST /retry-task` / `QueueFailedJobSrv.Retry`) — the analogue of `php artisan queue:retry`. A row is deleted from storage only after a successful publish.
 
@@ -30,21 +30,21 @@ An application that imports `github.com/ivan-makarenkov/go-failedjobs` should pu
 
 | Module | Purpose |
 |--------|---------|
-| `github.com/ivan-makarenkov/amqp-adapter` | `Queue` / `Publisher` interface (broker publish) |
+| `github.com/ivan-makarenkov/go-amqp-adapter` | `Queue` / `Publisher` interface (broker publish) |
 | `github.com/labstack/echo/v4` | HTTP handler `Register` / `NewHandler` |
 
 Transitive dependencies (GORM, sqlx, AMQP, etc.) are pulled automatically — declare them in the consumer `go.mod` only if used directly.
 
 Logger is the `gofailedjobs.Logger` interface (`ErrorContext` is enough); `*slog.Logger` works. `nil` is replaced with a no-op.
 
-On `Retry`, the correlation id is written to context via `gofailedjobs.SetCorrelationID` (`gofailedjobs:failed-job:<id>`). To put it into AMQP headers, configure the queue, e.g. with `amqp-adapter/otel`:
+On `Retry`, the correlation id is written to context via `gofailedjobs.SetCorrelationID` (`gofailedjobs:failed-job:<id>`). To put it into AMQP headers, configure the queue, e.g. with `go-amqp-adapter/otel`:
 
 ```go
 import (
     "log/slog"
 
-    mq "github.com/ivan-makarenkov/amqp-adapter"
-    "github.com/ivan-makarenkov/amqp-adapter/otel"
+    mq "github.com/ivan-makarenkov/go-amqp-adapter"
+    "github.com/ivan-makarenkov/go-amqp-adapter/otel"
     "github.com/ivan-makarenkov/go-failedjobs"
 )
 

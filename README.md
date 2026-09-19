@@ -8,7 +8,15 @@ go get github.com/ivan-makarenkov/go-failedjobs
 
 Package: `gofailedjobs`.
 
-The package provides an HTTP route and `QueueFailedJobSrv.Retry` to select failed-job rows by ID and republish payloads to RabbitMQ with a configurable `MaxRetryDuration` (default 20 minutes). A row is deleted from storage only after a successful publish.
+## Together with amqp-adapter
+
+This library and [amqp-adapter](https://github.com/ivan-makarenkov/amqp-adapter) were designed to be used together as a replacement for Laravel's retry-through-queue mechanism (`tries` / delayed retries → `failed_jobs` → `php artisan queue:retry`).
+
+- **amqp-adapter** handles in-broker retries (delay queue / DLX) — the analogue of Laravel's automatic job retries.
+- When retries are exhausted (or the handler returns a non-retryable error), `WithFailHandler` writes the payload here via `GetFailedJobHandler` — the analogue of Laravel's `failed_jobs` table.
+- **go-failedjobs** later republishes selected rows to RabbitMQ (`POST /retry-task` / `QueueFailedJobSrv.Retry`) — the analogue of `php artisan queue:retry`. A row is deleted from storage only after a successful publish.
+
+The package provides an HTTP route and `QueueFailedJobSrv.Retry` to select failed-job rows by ID and republish payloads to RabbitMQ with a configurable `MaxRetryDuration` (default 20 minutes).
 
 Failed jobs can be stored with [GORM](https://github.com/go-gorm/gorm) or [sqlx](https://github.com/jmoiron/sqlx) — choose via `gofailedjobs.Config.Driver`. DBMS is MySQL or PostgreSQL via `gofailedjobs.Config.Dialect`.
 

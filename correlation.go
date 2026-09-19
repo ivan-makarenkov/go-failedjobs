@@ -14,5 +14,6 @@ func SetCorrelationID(ctx context.Context, value string) context.Context {
 // GetCorrelationID reads the correlation id from context set via SetCorrelationID.
 func GetCorrelationID(ctx context.Context) string {
 	value, _ := ctx.Value(correlationIDKey{}).(string)
+
 	return value
 }

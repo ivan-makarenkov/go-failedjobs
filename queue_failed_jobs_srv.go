@@ -33,7 +33,7 @@ type QueueFailedJobSrv struct {
 	maxRetryIDs       int
 	dbWriteTimeout    time.Duration
 	maxRetryTimeout   time.Duration
-	handlerCtx        context.Context
+	handlerStop       <-chan struct{}
 	publisherResolver PublisherResolver
 	close             func() error
 }
@@ -53,7 +53,7 @@ func NewQueueFailedJobSrv(repo QueueFailedJobRepoInterface, lgr Logger) *QueueFa
 		maxRetryIDs:       maxRetryIDs,
 		dbWriteTimeout:    defaultDBWriteTimeout,
 		maxRetryTimeout:   defaultMaxRetryTimeout,
-		handlerCtx:        context.Background(),
+		handlerStop:       nil,
 		publisherResolver: nil,
 		close:             nil,
 	}
@@ -118,7 +118,7 @@ func (s *QueueFailedJobSrv) SetMaxRetryTimeout(d time.Duration) *QueueFailedJobS
 // (cancellation on shutdown). Nil is ignored.
 func (s *QueueFailedJobSrv) SetHandlerContext(ctx context.Context) *QueueFailedJobSrv {
 	if ctx != nil {
-		s.handlerCtx = ctx
+		s.handlerStop = ctx.Done()
 	}
 
 	return s
@@ -154,10 +154,8 @@ func (s *QueueFailedJobSrv) Close() error {
 // the mq fail-handler contract does not pass a context.
 func (s *QueueFailedJobSrv) GetFailedJobHandler() func(qName string, msg string, errMsg string) error {
 	return func(qName string, msg string, errMsg string) error {
-		parent := s.handlerCtx
-		if parent == nil {
-			parent = context.Background()
-		}
+		parent, stopParent := contextFromDone(s.handlerStop)
+		defer stopParent()
 
 		ctx, cancel := context.WithTimeout(parent, s.dbWriteTimeout)
 		defer cancel()
@@ -231,11 +229,8 @@ func (s *QueueFailedJobSrv) Retry(ctx context.Context, ids []int, queue Publishe
 		return err
 	}
 
-	if s.maxRetryTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, s.maxRetryTimeout)
-		defer cancel()
-	}
+	ctx, cancel := withOptionalTimeout(ctx, s.maxRetryTimeout)
+	defer cancel()
 
 	jobs, err := s.repo.GetByIDs(ctx, ids)
 	if err != nil {
@@ -273,6 +268,7 @@ func (s *QueueFailedJobSrv) retryOne(ctx context.Context, job QueueFailedJob, de
 
 	err = pub.Publish(pubCtx, mq.QueueName(job.Queue), mq.PublishMessage{
 		Body:             []byte(job.Payload),
+		ContentType:      mq.DefaultContentType,
 		MaxRetryDuration: &dur,
 		Priority:         nil,
 	})
@@ -303,12 +299,13 @@ func (s *QueueFailedJobSrv) retryOne(ctx context.Context, job QueueFailedJob, de
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("deleting published failed job id=%d: %w", job.ID, err)
 	}
 
 	return nil
 }
 
+//nolint:ireturn // broker is selected by connection; callers only need Publisher
 func (s *QueueFailedJobSrv) resolvePublisher(job QueueFailedJob, defaultQueue Publisher) (Publisher, error) {
 	conn := strings.TrimSpace(job.Connection)
 	if conn == "" || conn == s.connection {
@@ -333,4 +330,38 @@ func (s *QueueFailedJobSrv) resolvePublisher(job QueueFailedJob, defaultQueue Pu
 
 func failedJobCorrelationID(id int) string {
 	return fmt.Sprintf("%s%d", failedJobCorrIDPrefix, id)
+}
+
+func withOptionalTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(ctx, timeout)
+}
+
+func contextFromDone(stop <-chan struct{}) (context.Context, context.CancelFunc) {
+	if stop == nil {
+		return context.Background(), func() {}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	select {
+	case <-stop:
+		cancel()
+
+		return ctx, cancel
+	default:
+	}
+
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	return ctx, cancel
 }

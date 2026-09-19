@@ -24,7 +24,7 @@ type RouteRegistrar interface {
 // authMiddleware is required (auth/ACL); nil panics with ErrNilAuthMiddleware.
 // If auth is already applied globally on Echo, pass PassThroughMiddleware.
 func Register(
-	e RouteRegistrar,
+	router RouteRegistrar,
 	authMiddleware echo.MiddlewareFunc,
 	srv QueueFailedJobSrvInterface,
 	queue Publisher,
@@ -33,7 +33,7 @@ func Register(
 		panic(ErrNilAuthMiddleware)
 	}
 
-	e.POST(RoutePath, NewHandler(srv, queue), authMiddleware)
+	router.POST(RoutePath, NewHandler(srv, queue), authMiddleware)
 }
 
 // PassThroughMiddleware is a no-op middleware when auth is already applied at the app level.
@@ -47,26 +47,27 @@ func NewHandler(srv QueueFailedJobSrvInterface, queue Publisher) echo.HandlerFun
 	if srv == nil {
 		panic(ErrNilService)
 	}
+
 	if queue == nil {
 		panic(ErrNilQueue)
 	}
 
-	return func(c echo.Context) error {
-		ids, err := splitIDs(c.QueryParam("task"))
+	return func(echoCtx echo.Context) error {
+		ids, err := splitIDs(echoCtx.QueryParam("task"))
 		if err != nil {
-			return writeClientErr(c, err)
+			return writeClientErr(echoCtx, err)
 		}
 
-		err = srv.Retry(c.Request().Context(), ids, queue)
+		err = srv.Retry(echoCtx.Request().Context(), ids, queue)
 		if err != nil {
 			if code, ok := clientErrorStatus(err); ok {
-				return c.String(code, err.Error())
+				return writeString(echoCtx, code, err.Error())
 			}
 
-			return c.String(http.StatusInternalServerError, err.Error())
+			return writeString(echoCtx, http.StatusInternalServerError, err.Error())
 		}
 
-		return c.String(http.StatusOK, "OK")
+		return writeString(echoCtx, http.StatusOK, "OK")
 	}
 }
 
@@ -86,13 +87,22 @@ func clientErrorStatus(err error) (int, bool) {
 	}
 }
 
-func writeClientErr(c echo.Context, err error) error {
+func writeClientErr(echoCtx echo.Context, err error) error {
 	code, ok := clientErrorStatus(err)
 	if !ok {
 		code = http.StatusBadRequest
 	}
 
-	return c.String(code, err.Error())
+	return writeString(echoCtx, code, err.Error())
+}
+
+func writeString(echoCtx echo.Context, code int, msg string) error {
+	err := echoCtx.String(code, msg)
+	if err != nil {
+		return fmt.Errorf("writing http response: %w", err)
+	}
+
+	return nil
 }
 
 func splitIDs(ids string) ([]int, error) {

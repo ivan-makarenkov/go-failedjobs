@@ -11,6 +11,10 @@ help: ## Available commands
 
 ##@ Development
 
+trivy: ## Trivy fs-скан уязвимостей зависимостей
+	@echo "Trivy fs..."
+	@trivy fs .
+
 # Run tests
 test: ## Run tests with race detection and coverage report generation
 	@echo "Running tests..."
